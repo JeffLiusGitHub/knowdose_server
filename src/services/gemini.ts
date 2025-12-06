@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { MealTimes, Medication, LocalizedText } from '../types';
+import { MealTimes, Medication, LocalizedText } from '../types.js';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 

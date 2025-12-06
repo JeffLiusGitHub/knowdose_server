@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { performTextAi, performAiAnalysis } from '../services/gemini';
-import { MealTimes, Medication } from '../types';
+import { performTextAi, performAiAnalysis } from '../services/gemini.js';
+import { MealTimes, Medication } from '../types.js';
 
 const router = Router();
 

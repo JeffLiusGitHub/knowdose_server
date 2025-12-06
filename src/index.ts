@@ -1,9 +1,10 @@
 import express from 'express';
+// @ts-ignore
 import cors from 'cors';
 import dotenv from 'dotenv';
-import aiRoutes from './routes/ai';
-import medRoutes from './routes/medications';
-import settingsRoutes from './routes/settings';
+import aiRoutes from './routes/ai.js';
+import medRoutes from './routes/medications.js';
+import settingsRoutes from './routes/settings.js';
 
 dotenv.config();
 

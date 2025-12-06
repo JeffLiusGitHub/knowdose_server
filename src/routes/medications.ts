@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { db } from '../services/db';
-import { Medication, RecordItem } from '../types';
+import { db } from '../services/db.js';
+import { Medication, RecordItem } from '../types.js';
 
 const router = Router();
 
@@ -32,7 +32,7 @@ router.get('/records', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const snap = await db.collection('records').where('userId', '==', userId).get();
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
     console.error(err);
@@ -44,7 +44,7 @@ router.get('/', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const snap = await db.collection('medications').where('userId', '==', userId).get();
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
     console.error(err);
@@ -91,7 +91,7 @@ router.delete('/:id', async (req, res) => {
     // cascade delete records
     const recSnap = await db.collection('records').where('userId', '==', userId).where('medicationId', '==', id).get();
     const batch = db.batch();
-    recSnap.docs.forEach((d) => batch.delete(d.ref));
+    recSnap.docs.forEach((d: any) => batch.delete(d.ref));
     await batch.commit();
     res.json({ ok: true });
   } catch (err: any) {
@@ -110,7 +110,7 @@ router.get('/:id/records', async (req, res) => {
       .where('medicationId', '==', id)
       .orderBy('timestamp', 'desc')
       .get();
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
     console.error(err);
@@ -131,7 +131,9 @@ router.post('/:id/records', async (req, res) => {
       })
       .parse(req.body);
     const rec: RecordItem = {
-      ...record,
+      name: record.name as any,
+      timeSlot: record.timeSlot,
+      status: record.status,
       medicationId: id,
       userId,
       timestamp: record.timestamp ? new Date(record.timestamp) : new Date(),
