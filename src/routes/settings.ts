@@ -2,6 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../services/db.js';
 
+const APP_ID = process.env.APP_ID || 'default-med-app-id';
+const settingsDoc = (userId: string) =>
+  db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('user_settings').doc('preferences');
+
 const router = Router();
 
 const requireUser = (req: any, res: any, next: any) => {
@@ -16,7 +20,7 @@ router.use(requireUser);
 router.get('/', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const doc = await db.collection('user_settings').doc(userId).get();
+    const doc = await settingsDoc(userId).get();
     res.json(doc.exists ? doc.data() : {});
   } catch (err: any) {
     console.error(err);
@@ -39,7 +43,7 @@ router.post('/', async (req, res) => {
         emailNotification: z.any().optional(),
       })
       .parse(req.body);
-    await db.collection('user_settings').doc(userId).set(payload, { merge: true });
+    await settingsDoc(userId).set(payload, { merge: true });
     res.json({ ok: true });
   } catch (err: any) {
     console.error(err);

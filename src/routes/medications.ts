@@ -4,15 +4,28 @@ import { db } from '../services/db.js';
 import { Medication, RecordItem } from '../types.js';
 
 const router = Router();
+const APP_ID = process.env.APP_ID || 'default-med-app-id';
+
+const medCollection = (userId: string) =>
+  db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('medications');
+
+const recordCollection = (userId: string) =>
+  db.collection('artifacts').doc(APP_ID).collection('users').doc(userId).collection('records');
+
+const nullableString = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((v) => (v === null ? undefined : v));
 
 const medSchema = z.object({
   medicationName: z.any(),
   timingInstruction: z.any().optional(),
-  dailyFrequency: z.number().optional(),
+  dailyFrequency: z.union([z.number(), z.string()]).optional(),
   duration: z.union([z.number(), z.string()]).optional(),
-  category: z.string().optional(),
-  times: z.array(z.string()).optional(),
-  coverImage: z.string().optional(),
+  category: nullableString,
+  times: z.array(nullableString).optional(),
+  coverImage: nullableString,
   summary: z.any().optional(),
   customSchedules: z.record(z.array(z.string())).optional(),
   startDate: z.any().optional(),
@@ -26,12 +39,26 @@ const requireUser = (req: any, res: any, next: any) => {
   next();
 };
 
+const removeUndefined = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.filter((v) => v !== undefined).map(removeUndefined);
+  if (typeof obj === 'object') {
+    const out: any = {};
+    Object.entries(obj).forEach(([k, v]) => {
+      if (v === undefined) return;
+      out[k] = removeUndefined(v);
+    });
+    return out;
+  }
+  return obj;
+};
+
 router.use(requireUser);
 
 router.get('/records', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const snap = await db.collection('records').where('userId', '==', userId).get();
+    const snap = await recordCollection(userId).get();
     const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
@@ -43,7 +70,7 @@ router.get('/records', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const snap = await db.collection('medications').where('userId', '==', userId).get();
+    const snap = await medCollection(userId).get();
     const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
@@ -57,11 +84,11 @@ router.post('/', async (req, res) => {
     const userId = (req as any).userId as string;
     const data = medSchema.parse(req.body);
     const now = new Date();
-    const docRef = await db.collection('medications').add({
-      ...data,
+    const docRef = await medCollection(userId).add({
+      ...removeUndefined(data),
       userId,
       startDate: data.startDate ? new Date(data.startDate) : now,
-      createdAt: now,
+      createdAt: data.createdAt ? new Date(data.createdAt) : now,
     } as Medication);
     res.json({ id: docRef.id });
   } catch (err: any) {
@@ -75,7 +102,7 @@ router.put('/:id', async (req, res) => {
     const userId = (req as any).userId as string;
     const { id } = req.params;
     const data = medSchema.partial().parse(req.body);
-    await db.collection('medications').doc(id).update({ ...data, userId });
+    await medCollection(userId).doc(id).update({ ...removeUndefined(data), userId });
     res.json({ ok: true });
   } catch (err: any) {
     console.error(err);
@@ -87,9 +114,9 @@ router.delete('/:id', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const { id } = req.params;
-    await db.collection('medications').doc(id).delete();
+    await medCollection(userId).doc(id).delete();
     // cascade delete records
-    const recSnap = await db.collection('records').where('userId', '==', userId).where('medicationId', '==', id).get();
+    const recSnap = await recordCollection(userId).where('medicationId', '==', id).get();
     const batch = db.batch();
     recSnap.docs.forEach((d: any) => batch.delete(d.ref));
     await batch.commit();
@@ -104,12 +131,7 @@ router.get('/:id/records', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const { id } = req.params;
-    const snap = await db
-      .collection('records')
-      .where('userId', '==', userId)
-      .where('medicationId', '==', id)
-      .orderBy('timestamp', 'desc')
-      .get();
+    const snap = await recordCollection(userId).where('medicationId', '==', id).orderBy('timestamp', 'desc').get();
     const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     res.json(items);
   } catch (err: any) {
@@ -138,7 +160,7 @@ router.post('/:id/records', async (req, res) => {
       userId,
       timestamp: record.timestamp ? new Date(record.timestamp) : new Date(),
     };
-    const docRef = await db.collection('records').add(rec);
+    const docRef = await recordCollection(userId).add(rec);
     res.json({ id: docRef.id });
   } catch (err: any) {
     console.error(err);
