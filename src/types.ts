@@ -36,3 +36,18 @@ export interface RecordItem {
   status: string;
   timestamp: Date;
 }
+
+export interface User {
+  id: string;
+  email?: string;
+  name?: string;
+  inviteCode?: string;
+  supervisors?: string[];
+  supervisees?: string[];
+  healthProfile?: any;
+  preferences?: any;
+  emergencyContact?: any;
+  mealTimes?: MealTimes;
+  emailNotification?: { enabled: boolean; email: string };
+  onboardingCompleted?: boolean;
+}

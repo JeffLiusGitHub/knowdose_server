@@ -31,8 +31,13 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const payload = z
+        const payload = z
       .object({
+        userName: z.string().optional(),
+        onboardingCompleted: z.boolean().optional(),
+        inviteCode: z.string().optional(),
+        supervisors: z.array(z.string()).optional(),
+        supervisees: z.array(z.string()).optional(),
         mealTimes: z
           .object({
             breakfast: z.string().optional(),
@@ -43,6 +48,13 @@ router.post('/', async (req, res) => {
         emailNotification: z.any().optional(),
       })
       .parse(req.body);
+
+    if (payload.inviteCode) {
+        await db.collection('artifacts').doc(APP_ID)
+            .collection('invite_codes').doc(payload.inviteCode)
+            .set({ userId }, { merge: true });
+    }
+
     await settingsDoc(userId).set(payload, { merge: true });
     res.json({ ok: true });
   } catch (err: any) {
