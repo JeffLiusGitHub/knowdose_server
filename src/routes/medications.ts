@@ -141,6 +141,9 @@ router.get('/:id/records', async (req, res) => {
 });
 
 router.post('/:id/records', async (req, res) => {
+    // RECORDS ARE NOW LOCAL ONLY. Backend storage disabled for privacy.
+    res.status(200).json({ id: 'local-only-no-sync' });
+    /*
   try {
     const userId = (req as any).userId as string;
     const { id } = req.params;
@@ -166,6 +169,7 @@ router.post('/:id/records', async (req, res) => {
     console.error(err);
     res.status(400).json({ error: err.message || 'Create record failed' });
   }
+    */
 });
 
 export default router;

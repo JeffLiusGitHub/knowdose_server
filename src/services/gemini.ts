@@ -44,10 +44,10 @@ export const performAiAnalysis = async (
     lang === 'zh'
       ? `分析药物标签。用户三餐时间：早餐${mealTimes.breakfast}, 午餐${mealTimes.lunch}, 晚餐${mealTimes.dinner}。现有药物时间：${existingMeds
           .map((m) => `${m.medicationName}: ${m.times?.join(',')}`)
-          .join('; ')}。提取 JSON：1.medicationName{zh,en} 2.dailyFrequency 3.timingInstruction{zh,en} 4.isVitamin 5.summary 6.calculatedTimes(['HH:MM',...]).`
+          .join('; ')}。提取 JSON：1.medicationName{zh,en} 2.dailyFrequency 3.timingInstruction{zh,en} 4.isVitamin 5.summary(中文) 6.calculatedTimes(['HH:MM',...]).`
       : `Analyze the medication label image. Meal times: breakfast ${mealTimes.breakfast}, lunch ${mealTimes.lunch}, dinner ${mealTimes.dinner}. Existing meds: ${existingMeds
           .map((m) => `${m.medicationName}: ${m.times?.join(',')}`)
-          .join('; ')}. Return JSON fields: medicationName {zh,en}, dailyFrequency, timingInstruction {zh,en}, isVitamin, summary, calculatedTimes ['HH:MM',...].`;
+          .join('; ')}. Return JSON fields: medicationName {zh,en}, dailyFrequency, timingInstruction {zh,en}, isVitamin, summary(English), calculatedTimes ['HH:MM',...].`;
 
   const response = await ai.models.generateContent({
     model: MODEL_IMAGE,

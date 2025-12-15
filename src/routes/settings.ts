@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
             dinner: z.string().optional(),
           })
           .optional(),
-        emailNotification: z.any().optional(),
+        // emailNotification removed
       })
       .parse(req.body);
     await settingsDoc(userId).set(payload, { merge: true });
