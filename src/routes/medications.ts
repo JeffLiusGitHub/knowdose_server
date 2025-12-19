@@ -25,11 +25,13 @@ const medSchema = z.object({
   duration: z.union([z.number(), z.string()]).optional(),
   category: nullableString,
   times: z.array(nullableString).optional(),
-  coverImage: nullableString,
+  // coverImage: nullableString, // REMOVED: Local only
   summary: z.any().optional(),
   customSchedules: z.record(z.array(z.string())).optional(),
   startDate: z.any().optional(),
   createdAt: z.any().optional(),
+  postMedicationWindow: z.number().optional(),
+  safetyInstruction: z.any().optional(),
 });
 
 const requireUser = (req: any, res: any, next: any) => {

@@ -22,6 +22,8 @@ export interface Medication {
   times?: string[];
   coverImage?: string;
   summary?: LocalizedText | string;
+  postMedicationWindow?: number; // Minutes
+  safetyInstruction?: LocalizedText | string;
   customSchedules?: Record<string, string[]>;
   startDate?: Date;
   createdAt?: Date;
