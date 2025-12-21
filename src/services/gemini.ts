@@ -44,10 +44,10 @@ export const performAiAnalysis = async (
     lang === 'zh'
       ? `分析药物标签。用户三餐时间：早餐${mealTimes.breakfast}, 午餐${mealTimes.lunch}, 晚餐${mealTimes.dinner}。现有药物时间：${existingMeds
           .map((m) => `${m.medicationName}: ${m.times?.join(',')}`)
-          .join('; ')}。提取 JSON：1.medicationName{zh,en} 2.dailyFrequency 3.timingInstruction{zh,en} 4.isVitamin 5.summary(中文) 6.calculatedTimes(['HH:MM',...]) 7.postMedicationWindow(分钟,整数,无则0; 例如"服药后30分钟不可进食"则30) 8.safetyInstruction{zh,en}(简短安全提示).`
+          .join('; ')}。提取 JSON：1.medicationName{zh,en} 2.dailyFrequency 3.timingInstruction{zh,en} 4.isVitamin 5.summary(中文) 6.calculatedTimes(['HH:MM',...]) 7.dosage(容量/规格, e.g. "500mg") 8.dosageInferred(Boolean,若标签无明显规格则是AI推断的) 9.postMedicationWindow(分钟,整数,无则0; 例如"服药后30分钟不可进食"则30. 若标签未提及但根据医学常识需要(如某些抗生素),请推断并填入) 10.postMedicationWindowInferred(Boolean,若标签未提及则是AI根据医学常识推断的) 11.safetyInstruction{zh,en}(简短安全提示). 12.safetyInstructionInferred(Boolean,若标签未提及则是AI推断的).`
       : `Analyze the medication label image. Meal times: breakfast ${mealTimes.breakfast}, lunch ${mealTimes.lunch}, dinner ${mealTimes.dinner}. Existing meds: ${existingMeds
           .map((m) => `${m.medicationName}: ${m.times?.join(',')}`)
-          .join('; ')}. Return JSON fields: medicationName {zh,en}, dailyFrequency, timingInstruction {zh,en}, isVitamin, summary(English), calculatedTimes ['HH:MM',...], postMedicationWindow(minutes, integer, 0 if none), safetyInstruction {zh,en} (short warning).`;
+          .join('; ')}. Return JSON fields: medicationName {zh,en}, dailyFrequency, timingInstruction {zh,en}, isVitamin, summary(English), calculatedTimes ['HH:MM',...], dosage(string, e.g. "500mg"), dosageInferred(boolean, true if inferred/not distinct), postMedicationWindow(minutes, integer, 0 if none. If label missing but medical knowledge suggests it, infer it.), postMedicationWindowInferred(boolean, true if inferred from medical knowledge), safetyInstruction {zh,en} (short warning), safetyInstructionInferred(boolean, true if inferred).`;
 
   const response = await ai.models.generateContent({
     model: MODEL_IMAGE,
