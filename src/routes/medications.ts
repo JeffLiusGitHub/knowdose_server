@@ -32,6 +32,7 @@ const medSchema = z.object({
   createdAt: z.any().optional(),
   postMedicationWindow: z.number().optional(),
   safetyInstruction: z.any().optional(),
+  dosage: z.string().nullable().optional(),
 });
 
 const requireUser = (req: any, res: any, next: any) => {
