@@ -6,6 +6,7 @@ import { rateLimit } from 'express-rate-limit';
 import aiRoutes from './routes/ai.js';
 import medRoutes from './routes/medications.js';
 import settingsRoutes from './routes/settings.js';
+import userRoutes from './routes/users.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -31,6 +32,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/ai', aiRoutes);
 app.use('/api/medications', medRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/users', userRoutes);
 
 app.listen(port, () => {
 	console.log(`KnowDose backend running on http://localhost:${port}`);
