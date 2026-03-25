@@ -8,12 +8,16 @@ const router = Router();
 const textSchema = z.object({
   prompt: z.string().min(1),
   lang: z.enum(['zh', 'en']).default('zh'),
+  citationMode: z
+    .enum(['full_report', 'interaction', 'diet', 'weekly_report'])
+    .optional(),
+  medicationNames: z.array(z.string().min(1)).max(20).default([]),
 });
 
 router.post('/text', async (req, res) => {
   try {
-    const { prompt, lang } = textSchema.parse(req.body);
-    const text = await performTextAi(prompt, lang);
+    const { prompt, lang, citationMode, medicationNames } = textSchema.parse(req.body);
+    const text = await performTextAi(prompt, lang, { citationMode, medicationNames });
     res.json({ text });
   } catch (err: any) {
     console.error(err);

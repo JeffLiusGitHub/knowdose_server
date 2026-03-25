@@ -12,38 +12,35 @@ router.delete('/me', async (req, res) => {
             return res.status(401).json({ error: 'Missing x-user-id' });
         }
 
+        let authDeleted = false;
+
         // 1. Delete user from Firebase Auth if they exist
         try {
             await auth.deleteUser(userId);
+            authDeleted = true;
             console.log(`Deleted user ${userId} from Firebase Auth`);
         } catch (authErr: any) {
-            console.warn(`Could not delete user ${userId} from Auth (may not exist or already deleted):`, authErr.message);
+            const authCode = authErr?.code || '';
+            if (authCode === 'auth/user-not-found') {
+                authDeleted = true;
+                console.log(`User ${userId} was already absent from Firebase Auth`);
+            } else {
+                console.warn(`Could not delete user ${userId} from Auth:`, authErr.message);
+                throw authErr;
+            }
         }
 
-        // 2. Delete all Firestore data for this user
+        // 2. Delete all Firestore data for this user, including any nested subcollections
         const userRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(userId);
-        
-        // Delete medications collection
-        const medsSnap = await userRef.collection('medications').get();
-        const batch = db.batch();
-        medsSnap.docs.forEach((doc) => batch.delete(doc.ref));
-        
-        // Delete settings collection
-        const settingsSnap = await userRef.collection('user_settings').get();
-        settingsSnap.docs.forEach((doc) => batch.delete(doc.ref));
-
-        // Note: Records collection is already local-only mostly, but clear any old ones
-        const recordsSnap = await userRef.collection('records').get();
-        recordsSnap.docs.forEach((doc) => batch.delete(doc.ref));
-
-        // Commit subcollection deletions
-        await batch.commit();
-
-        // Delete the main user document
-        await userRef.delete();
+        await db.recursiveDelete(userRef);
         console.log(`Deleted all Firestore data for user ${userId}`);
 
-        res.json({ ok: true });
+        res.json({
+            ok: true,
+            authDeleted,
+            firestoreDeleted: true,
+            userId,
+        });
     } catch (err: any) {
         console.error('Error deleting user:', err);
         res.status(500).json({ error: err.message || 'Failed to delete user' });
