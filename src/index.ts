@@ -3,6 +3,7 @@ import express from 'express';
 // @ts-ignore
 import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
+import { verifyJWTMiddleware } from './services/jwt.js';
 import aiRoutes from './routes/ai.js';
 import medRoutes from './routes/medications.js';
 import settingsRoutes from './routes/settings.js';
@@ -13,6 +14,7 @@ const port = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+app.use(verifyJWTMiddleware);
 
 // Basic rate limit to avoid rapid-fire calls
 const apiLimiter = rateLimit({
