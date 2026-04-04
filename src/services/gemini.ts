@@ -17,246 +17,214 @@ interface TextAiOptions {
   medicationNames?: string[];
 }
 
-interface CitationLink {
-  label: string;
-  url: string;
+export interface TextAiSourceHints {
+  medications: string[];
+  foods: string[];
 }
 
-const DAILYMED_HOME = 'https://dailymed.nlm.nih.gov/dailymed/';
-const DAILYMED_SEARCH = (query: string) =>
-  `https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=${encodeURIComponent(query)}`;
-const MEDLINEPLUS_DRUG_INFO = 'https://medlineplus.gov/druginformation.html';
-const MEDLINEPLUS_NUTRITION = 'https://medlineplus.gov/nutrition.html';
-const FDA_DRUG_INTERACTIONS =
-  'https://www.fda.gov/drugs/resources-drugs/drug-interactions-what-you-should-know';
-const FDA_DRUG_SAFETY = 'https://www.fda.gov/drugs/drug-safety-and-availability';
-const NIH_ODS = 'https://ods.od.nih.gov/';
-const CDC_MEDICATION_SAFETY = 'https://www.cdc.gov/medication-safety/about/index.html';
+export interface TextAiResult {
+  text: string;
+  sourceHints?: TextAiSourceHints;
+}
 
-const normalizeMedicationNames = (medicationNames: string[] = []) =>
-  [...new Set(medicationNames.map((n) => n.trim()).filter(Boolean))].slice(0, 8);
+const MAX_MEDICATION_CONTEXT_NAMES = 4;
+const MAX_SOURCE_MEDICATION_HINTS = 3;
+const MAX_SOURCE_FOOD_HINTS = 4;
 
-const dedupeLinks = (links: CitationLink[]) => {
-  const seen = new Set<string>();
-  return links.filter((link) => {
-    if (seen.has(link.url)) return false;
-    seen.add(link.url);
-    return true;
-  });
+const normalizeMedicationNames = (
+  medicationNames: string[] = [],
+  limit = MAX_MEDICATION_CONTEXT_NAMES
+) =>
+  [...new Set(medicationNames.map((n) => n.trim()).filter(Boolean))].slice(0, limit);
+
+const normalizeHintList = (values: unknown, limit: number): string[] => {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean)
+    .map((value) =>
+      value
+        .replace(/\s+/g, ' ')
+        .replace(/[。；，、]/g, '')
+        .trim()
+    );
+  return [...new Set(normalized)].slice(0, limit);
 };
 
-const buildCitationLinks = (
-  citationMode: CitationMode,
-  medicationNames: string[],
-  lang: 'zh' | 'en'
-): CitationLink[] => {
-  const meds = normalizeMedicationNames(medicationNames);
-  const links: CitationLink[] = meds.map((name) => ({
-    label: lang === 'zh' ? `DailyMed 搜索：${name}` : `DailyMed Search: ${name}`,
-    url: DAILYMED_SEARCH(name),
-  }));
+const stripSourcesSection = (text: string) =>
+  text.replace(/(?:\n|^)###\s*(Sources|来源)\b[\s\S]*$/i, '').trim();
 
-  if (citationMode === 'full_report') {
-    links.push(
-      {
-        label:
-          lang === 'zh'
-            ? 'DailyMed（美国国家医学图书馆）'
-            : 'DailyMed (U.S. National Library of Medicine)',
-        url: DAILYMED_HOME,
-      },
-      {
-        label: lang === 'zh' ? 'MedlinePlus：药物信息' : 'MedlinePlus: Drug Information',
-        url: MEDLINEPLUS_DRUG_INFO,
-      },
-      {
-        label: lang === 'zh' ? 'FDA：药物安全信息' : 'FDA: Drug Safety and Availability',
-        url: FDA_DRUG_SAFETY,
-      }
-    );
-  }
-
-  if (citationMode === 'interaction') {
-    links.push(
-      {
-        label:
-          lang === 'zh'
-            ? 'FDA：药物相互作用须知'
-            : 'FDA: Drug Interactions (What You Should Know)',
-        url: FDA_DRUG_INTERACTIONS,
-      },
-      {
-        label:
-          lang === 'zh'
-            ? 'DailyMed（美国国家医学图书馆）'
-            : 'DailyMed (U.S. National Library of Medicine)',
-        url: DAILYMED_HOME,
-      }
-    );
-  }
-
-  if (citationMode === 'diet') {
-    links.push(
-      {
-        label:
-          lang === 'zh'
-            ? 'FDA：药物相互作用须知'
-            : 'FDA: Drug Interactions (What You Should Know)',
-        url: FDA_DRUG_INTERACTIONS,
-      },
-      {
-        label:
-          lang === 'zh'
-            ? 'NIH ODS：膳食补充剂办公室'
-            : 'NIH ODS: Office of Dietary Supplements',
-        url: NIH_ODS,
-      },
-      {
-        label: lang === 'zh' ? 'MedlinePlus：营养与饮食' : 'MedlinePlus: Nutrition',
-        url: MEDLINEPLUS_NUTRITION,
-      },
-      {
-        label:
-          lang === 'zh'
-            ? 'DailyMed（美国国家医学图书馆）'
-            : 'DailyMed (U.S. National Library of Medicine)',
-        url: DAILYMED_HOME,
-      }
-    );
-  }
-
-  if (citationMode === 'weekly_report') {
-    links.push(
-      {
-        label: lang === 'zh' ? 'CDC：用药安全' : 'CDC: Medication Safety',
-        url: CDC_MEDICATION_SAFETY,
-      },
-      {
-        label:
-          lang === 'zh'
-            ? 'DailyMed（美国国家医学图书馆）'
-            : 'DailyMed (U.S. National Library of Medicine)',
-        url: DAILYMED_HOME,
-      }
-    );
-  }
-
-  if (!links.length) {
-    links.push({
-      label:
-        lang === 'zh'
-          ? 'DailyMed（美国国家医学图书馆）'
-          : 'DailyMed (U.S. National Library of Medicine)',
-      url: DAILYMED_HOME,
-    });
-  }
-
-  return dedupeLinks(links);
-};
-
-const buildCitationInstruction = (
-  lang: 'zh' | 'en',
-  links: CitationLink[]
-) => {
-  const linkList = links
-    .map((link, idx) => `${idx + 1}. [${link.label}](${link.url})`)
-    .join('\n');
-
+const buildSafetyInstruction = (lang: 'zh' | 'en') => {
   if (lang === 'zh') {
     return `
 
-你必须使用“带引用编号”的输出格式：
-1) 所有关键建议句末都要添加引用编号，格式为 [1]、[2]（阿拉伯数字）。
-2) 在回答正文最后，必须追加以下两个区块，且它们必须放在最末尾：
-### Sources
-按数字编号列出可点击 Markdown 链接，格式：1. [来源名称](URL)
-
-### Disclaimer
-AI 内容仅供参考，不可替代专业医疗建议。请在调整用药或饮食前咨询医生或药师。
-
-3) 优先使用 DailyMed 搜索链接作为药品事实依据。
-4) 只允许使用下方“可用来源”中的链接，不要编造或输出其他来源链接。
-
-可用来源（请原样引用）：
-${linkList}
-`;
+安全要求：不做诊断，不给绝对停药/换药指令；证据不足要明确不确定；涉及严重急症信号时提示立即就医。`;
   }
 
   return `
 
-You must use a citation-number format:
-1) Add citation markers at the end of every key recommendation sentence using [1], [2], etc.
-2) At the very end of the response, append exactly these two sections:
-### Sources
-List clickable Markdown links using numeric order, format: 1. [Source Name](URL)
-
-### Disclaimer
-AI content is for reference only and is not a substitute for professional medical advice. Consult a doctor or pharmacist before making medication or diet changes.
-
-3) Prioritize DailyMed search links for medication-specific claims.
-4) Only use links from the provided source list below. Do not invent or output other source URLs.
-
-Allowed sources (use as-is):
-${linkList}
-`;
+Safety: no diagnosis, no absolute stop/switch directives; state uncertainty when evidence is limited; advise urgent care for severe red flags.`;
 };
 
-const injectFallbackCitationMarkers = (text: string) => {
-  if (/\[\d+\]/.test(text)) return text;
-
-  const lines = text.split('\n');
-  let inMetaSection = false;
-
-  const withMarkers = lines.map((line) => {
-    if (/^###\s*(Sources|来源|Disclaimer|免责声明)\b/i.test(line.trim())) {
-      inMetaSection = true;
-      return line;
-    }
-    if (inMetaSection) return line;
-
-    const trimmed = line.trim();
-    if (!trimmed) return line;
-    if (/^#{1,3}\s/.test(trimmed)) return line;
-    if (/^\s*>\s+/.test(line)) return line;
-
-    if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
-      return `${line.trimEnd()} [1]`;
-    }
-
-    return `${line.trimEnd()} [1]`;
-  });
-
-  return withMarkers.join('\n');
-};
-
-const appendSourcesAndDisclaimer = (
-  text: string,
-  links: CitationLink[],
+const buildScenarioInstruction = (
+  citationMode: CitationMode | undefined,
+  medicationNames: string[],
   lang: 'zh' | 'en'
 ) => {
-  const sourcesHeading = lang === 'zh' ? '### Sources' : '### Sources';
-  const disclaimerHeading = lang === 'zh' ? '### Disclaimer' : '### Disclaimer';
-  const disclaimerText =
-    lang === 'zh'
-      ? 'AI 内容仅供参考，不可替代专业医疗建议。请在调整用药或饮食前咨询医生或药师。'
-      : 'AI content is for reference only and is not a substitute for professional medical advice. Consult a doctor or pharmacist before making medication or diet changes.';
+  if (!citationMode) return '';
 
-  const hasSources = /(^|\n)###\s*(Sources|来源)\b/i.test(text);
-  const hasDisclaimer = /(^|\n)###\s*(Disclaimer|免责声明)\b/i.test(text);
+  const meds = normalizeMedicationNames(medicationNames, MAX_MEDICATION_CONTEXT_NAMES);
+  const medicationContext = meds.length
+    ? lang === 'zh'
+      ? `药物：${meds.join('、')}。`
+      : `Meds: ${meds.join(', ')}.`
+    : '';
 
-  let normalized = text.trim();
-  if (!hasSources) {
-    const sourceLines = links
-      .map((link, idx) => `${idx + 1}. [${link.label}](${link.url})`)
-      .join('\n');
-    normalized = `${normalized}\n\n${sourcesHeading}\n${sourceLines}`;
+  if (citationMode === 'interaction') {
+    return lang === 'zh'
+      ? `
+
+场景：药物相互作用。
+${medicationContext}
+输出重点相互作用、风险级别（高/中/低）和可执行建议（监测/错开/咨询），仅讨论相关药物。不要输出 Sources 区块。`
+      : `
+
+Task: medication interactions.
+${medicationContext}
+Provide key interactions, risk level (high/medium/low), and actionable steps (monitor/space/follow-up); stay medication-specific. Do not output a Sources section.`;
   }
 
-  if (!hasDisclaimer) {
-    normalized = `${normalized}\n\n${disclaimerHeading}\n${disclaimerText}`;
+  if (citationMode === 'diet') {
+    return lang === 'zh'
+      ? `
+
+场景：饮食与补充剂建议。
+${medicationContext}
+按“避免/限制/一般可行”分组，给出触发条件和可执行替代/错开时间建议。不要输出 Sources 区块。`
+      : `
+
+Task: diet and supplement guidance.
+${medicationContext}
+Group as "Avoid/Limit/Generally OK" with conditions and practical alternatives/spacing advice. Do not output a Sources section.`;
   }
 
-  return normalized;
+  if (citationMode === 'weekly_report') {
+    return lang === 'zh'
+      ? `
+
+场景：周报。
+仅基于给定依从性数据给出趋势、风险和改进建议，不臆测缺失指标。`
+      : `
+
+Task: weekly adherence report.
+Use only provided adherence data for trends, risks, and practical improvements; do not assume missing clinical metrics.`;
+  }
+
+  if (citationMode === 'full_report') {
+    return lang === 'zh'
+      ? `
+
+场景：单药摘要。
+覆盖用法、副作用观察、饮食相互作用和储存要点，保持简洁可执行。`
+      : `
+
+Task: single-medication summary.
+Cover usage, side-effect monitoring, diet interactions, and storage with concise actionable guidance.`;
+  }
+
+  return '';
+};
+
+const buildStructuredHintInstruction = (
+  citationMode: CitationMode,
+  lang: 'zh' | 'en'
+) => {
+  const common = lang === 'zh'
+    ? `请只输出严格 JSON（不要 Markdown 代码块），格式：
+{
+  "answer": "给用户展示的正文回答",
+  "sourceHints": {
+    "medications": ["英文通用名1", "英文通用名2"],
+    "foods": ["英文食物或补充剂通用名1"]
+  }
+}
+要求：
+1) answer 不要包含 Sources 或链接。
+2) sourceHints 里的名字必须用英文、通用名、便于检索，不要品牌名。
+3) 如果不确定就返回空数组。`
+    : `Output strict JSON only (no markdown code fences), schema:
+{
+  "answer": "final user-facing answer",
+  "sourceHints": {
+    "medications": ["english generic medication name 1", "english generic medication name 2"],
+    "foods": ["english food/supplement generic name 1"]
+  }
+}
+Rules:
+1) answer must not include a Sources section or links.
+2) sourceHints values must be English generic/common searchable names, avoid brand names.
+3) Use empty arrays when uncertain.`;
+
+  if (citationMode === 'interaction') {
+    return `${common}
+
+${lang === 'zh'
+  ? 'interaction 场景：medications 返回 2-3 个最关键相互作用药名；foods 返回空数组。'
+  : 'For interaction mode: medications should contain 2-3 key interacting meds; foods should be an empty array.'}`;
+  }
+
+  if (citationMode === 'diet') {
+    return `${common}
+
+${lang === 'zh'
+  ? 'diet 场景：medications 返回核心药名 1-2 个；foods 返回相关食物/饮品/补充剂 1-4 个。'
+  : 'For diet mode: medications should contain 1-2 core meds; foods should contain 1-4 relevant foods/drinks/supplements.'}`;
+  }
+
+  return common;
+};
+
+const parseStructuredResult = (
+  rawText: string,
+  citationMode: CitationMode
+): TextAiResult => {
+  const fallbackText = stripSourcesSection(rawText || 'No response generated.');
+
+  try {
+    const parsed = JSON.parse(rawText || '{}') as {
+      answer?: unknown;
+      sourceHints?: {
+        medications?: unknown;
+        foods?: unknown;
+      };
+    };
+
+    const text =
+      typeof parsed.answer === 'string' && parsed.answer.trim()
+        ? stripSourcesSection(parsed.answer.trim())
+        : fallbackText;
+
+    const medications = normalizeHintList(
+      parsed.sourceHints?.medications,
+      MAX_SOURCE_MEDICATION_HINTS
+    );
+    const foods = normalizeHintList(
+      parsed.sourceHints?.foods,
+      MAX_SOURCE_FOOD_HINTS
+    );
+
+    if (citationMode === 'interaction') {
+      return { text, sourceHints: { medications, foods: [] } };
+    }
+
+    if (citationMode === 'diet') {
+      return { text, sourceHints: { medications, foods } };
+    }
+
+    return { text };
+  } catch {
+    return { text: fallbackText };
+  }
 };
 
 export const ensureClient = () => {
@@ -270,37 +238,46 @@ export const performTextAi = async (
   userPrompt: string,
   lang: 'zh' | 'en',
   options: TextAiOptions = {}
-) => {
+): Promise<TextAiResult> => {
   const ai = ensureClient();
   const baseSystemPrompt =
     lang === 'zh'
       ? '你是一个专业的医疗助手，请用中文回答，保持专业、客观、简洁。'
       : 'You are a professional medical assistant. Respond in English, professionally and concisely.';
+  const safetyInstruction = buildSafetyInstruction(lang);
+  const scenarioInstruction = buildScenarioInstruction(
+    options.citationMode,
+    options.medicationNames || [],
+    lang
+  );
 
-  const citationLinks = options.citationMode
-    ? buildCitationLinks(options.citationMode, options.medicationNames || [], lang)
-    : [];
+  const mode = options.citationMode;
+  const requiresHints = mode === 'interaction' || mode === 'diet';
 
-  const citationInstruction =
-    options.citationMode && citationLinks.length
-      ? buildCitationInstruction(lang, citationLinks)
-      : '';
+  if (requiresHints && mode) {
+    const structuredInstruction = buildStructuredHintInstruction(mode, lang);
+    const systemPrompt = `${baseSystemPrompt}${safetyInstruction}${scenarioInstruction}\n\n${structuredInstruction}`;
 
-  const systemPrompt = `${baseSystemPrompt}${citationInstruction}`;
+    const response = await ai.models.generateContent({
+      model: MODEL_TEXT,
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: 'application/json',
+      },
+    });
 
+    return parseStructuredResult(response.text || '{}', mode);
+  }
+
+  const systemPrompt = `${baseSystemPrompt}${safetyInstruction}${scenarioInstruction}`;
   const response = await ai.models.generateContent({
     model: MODEL_TEXT,
     contents: userPrompt,
     config: { systemInstruction: systemPrompt },
   });
 
-  let text = response.text || 'No response generated.';
-  if (options.citationMode && citationLinks.length) {
-    text = injectFallbackCitationMarkers(text);
-    text = appendSourcesAndDisclaimer(text, citationLinks, lang);
-  }
-
-  return text;
+  return { text: stripSourcesSection(response.text || 'No response generated.') };
 };
 
 export const performAiAnalysis = async (

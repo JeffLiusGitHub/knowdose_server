@@ -17,8 +17,8 @@ const textSchema = z.object({
 router.post('/text', async (req, res) => {
   try {
     const { prompt, lang, citationMode, medicationNames } = textSchema.parse(req.body);
-    const text = await performTextAi(prompt, lang, { citationMode, medicationNames });
-    res.json({ text });
+    const result = await performTextAi(prompt, lang, { citationMode, medicationNames });
+    res.json(result);
   } catch (err: any) {
     console.error(err);
     res.status(400).json({ error: err.message || 'AI text error' });
