@@ -86,12 +86,12 @@ const buildScenarioInstruction = (
 
 场景：药物相互作用。
 ${medicationContext}
-输出重点相互作用、风险级别（高/中/低）和可执行建议（监测/错开/咨询），仅讨论相关药物。不要输出 Sources 区块。`
+输出重点相互作用和可执行建议（监测/错开/咨询），不要给高/中/低风险分级；仅讨论相关药物。不要输出 Sources 区块。`
       : `
 
 Task: medication interactions.
 ${medicationContext}
-Provide key interactions, risk level (high/medium/low), and actionable steps (monitor/space/follow-up); stay medication-specific. Do not output a Sources section.`;
+Provide key interactions and actionable steps (monitor/space/follow-up); do not output high/medium/low risk levels; stay medication-specific. Do not output a Sources section.`;
   }
 
   if (citationMode === 'diet') {
