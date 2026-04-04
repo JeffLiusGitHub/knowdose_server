@@ -6,6 +6,47 @@ import { generateToken, verifyToken, verifyJWTMiddleware } from '../services/jwt
 
 const router = Router();
 const APP_ID = process.env.APP_ID || 'default-med-app-id';
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+/**
+ * Helper: Decode mock Apple token for testing (development only)
+ * This is used when testing with mock tokens from test scripts
+ */
+function decodeMockAppleToken(token: string): any {
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+            throw new Error('Invalid token format');
+        }
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
+        return payload;
+    } catch (err) {
+        return null;
+    }
+}
+
+/**
+ * Helper: Verify Apple token (real or mock for development)
+ */
+async function verifyAppleToken(identityToken: string): Promise<any> {
+    try {
+        // Try real Apple verification first
+        return await verifyIdToken(identityToken, {
+            audience: process.env.APPLE_APP_ID || 'com.knowdose.app',
+        });
+    } catch (realErr: any) {
+        // If real verification fails and we're in development, try mock token
+        if (IS_DEV) {
+            console.log('Real Apple verification failed, attempting mock token decode (DEV ONLY)');
+            const mockPayload = decodeMockAppleToken(identityToken);
+            if (mockPayload) {
+                console.log('Successfully decoded mock Apple token');
+                return mockPayload;
+            }
+        }
+        throw realErr;
+    }
+}
 
 /**
  * POST /api/users/login/apple
@@ -22,9 +63,7 @@ router.post('/login/apple', async (req, res) => {
         // Verify the Apple identity token
         let decodedToken;
         try {
-            decodedToken = await verifyIdToken(identityToken, {
-                audience: process.env.APPLE_APP_ID || 'com.knowdose.app',
-            });
+            decodedToken = await verifyAppleToken(identityToken);
         } catch (tokenErr: any) {
             console.error('Apple token verification failed:', tokenErr.message);
             return res.status(401).json({ error: 'Invalid or expired Apple identity token' });
@@ -162,6 +201,73 @@ router.delete('/me', async (req, res) => {
     } catch (err: any) {
         console.error('Error deleting user:', err);
         res.status(500).json({ error: err.message || 'Failed to delete user' });
+    }
+});
+
+/**
+ * POST /api/users/login/apple/test
+ * TEST ENDPOINT (Development Only)
+ * Mock Apple login without Firebase - use this to test the full flow
+ * 
+ * Example request:
+ * POST http://localhost:4000/api/users/login/apple/test
+ * {
+ *   "identityToken": "<mock_token>",
+ *   "user": { "name": { "firstName": "John" }, "email": "john@example.com" }
+ * }
+ */
+router.post('/login/apple/test', async (req, res) => {
+    if (!IS_DEV) {
+        return res.status(403).json({ error: 'Test endpoint only available in development' });
+    }
+
+    try {
+        const { identityToken, user } = req.body;
+
+        if (!identityToken) {
+            return res.status(400).json({ error: 'Missing identityToken' });
+        }
+
+        // Decode the token (mock or real)
+        let decodedToken;
+        try {
+            decodedToken = await verifyAppleToken(identityToken);
+        } catch (tokenErr: any) {
+            console.error('Token decode failed:', tokenErr.message);
+            return res.status(401).json({ error: 'Invalid token format' });
+        }
+
+        const appleUserId = decodedToken.sub;
+        const email = decodedToken.email || user?.email || `apple-${appleUserId}@test.local`;
+        const name = user?.name?.firstName || user?.name?.givenName || 'TestUser';
+
+        if (!appleUserId) {
+            return res.status(400).json({ error: 'Could not extract user ID from token' });
+        }
+
+        // Generate a mock Firebase user ID
+        const firebaseUserId = `apple_${appleUserId}`;
+
+        // Generate JWT token directly (skip Firebase)
+        const token = generateToken(firebaseUserId);
+
+        console.log(`[TEST] Mock Apple login: ${firebaseUserId}`);
+
+        res.json({
+            ok: true,
+            token,
+            userId: firebaseUserId,
+            user: {
+                email,
+                displayName: name,
+                appleUserId,
+            },
+            _testMode: true,
+            _note: 'This is a test endpoint. No Firebase data was persisted.',
+        });
+    } catch (err: any) {
+        console.error('Test login error:', err);
+        res.status(500).json({ error: err.message || 'Test login failed' });
     }
 });
 
