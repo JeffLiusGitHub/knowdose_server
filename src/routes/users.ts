@@ -77,14 +77,28 @@ router.post('/login/apple', async (req, res) => {
             return res.status(400).json({ error: 'Could not extract user ID from Apple token' });
         }
 
-        let firebaseUserId: string;
+        const appleMappedUid = `apple_${appleUserId}`;
+        let firebaseUserId: string | null = null;
 
-        // Check if user already exists in Firebase by email or Apple UID
-        let firebaseUser = null;
-        if (email) {
+        // Resolve user deterministically by Apple sub first, then by email.
+        // This avoids immediate re-login failures right after account deletion
+        // when email may be unavailable on subsequent Apple sign-ins.
+        let firebaseUser: any = null;
+        try {
+            firebaseUser = await auth.getUser(appleMappedUid);
+            firebaseUserId = firebaseUser.uid;
+            console.log(`Using existing Firebase user by apple sub: ${firebaseUserId}`);
+        } catch (err: any) {
+            if (err.code !== 'auth/user-not-found') {
+                throw err;
+            }
+        }
+
+        if (!firebaseUser && email) {
             try {
                 firebaseUser = await auth.getUserByEmail(email);
                 firebaseUserId = firebaseUser.uid;
+                console.log(`Using existing Firebase user by email: ${firebaseUserId}`);
             } catch (err: any) {
                 if (err.code !== 'auth/user-not-found') {
                     throw err;
@@ -92,18 +106,36 @@ router.post('/login/apple', async (req, res) => {
             }
         }
 
-        // If user doesn't exist, create them
         if (!firebaseUser) {
-            const newUser = await auth.createUser({
-                email: email || `apple-${appleUserId}@knowdose.app`,
-                displayName: name,
-                uid: `apple_${appleUserId}`,
-            });
-            firebaseUserId = newUser.uid;
-            console.log(`Created new Firebase user: ${firebaseUserId}`);
-        } else {
-            firebaseUserId = firebaseUser.uid;
-            console.log(`Using existing Firebase user: ${firebaseUserId}`);
+            try {
+                const newUser = await auth.createUser({
+                    email: email || `apple-${appleUserId}@knowdose.app`,
+                    displayName: name,
+                    uid: appleMappedUid,
+                });
+                firebaseUserId = newUser.uid;
+                console.log(`Created new Firebase user: ${firebaseUserId}`);
+            } catch (createErr: any) {
+                const createCode = createErr?.code || '';
+
+                if (createCode === 'auth/uid-already-exists') {
+                    const existing = await auth.getUser(appleMappedUid);
+                    firebaseUserId = existing.uid;
+                    firebaseUser = existing;
+                    console.warn(`Recovered from uid conflict by reusing ${firebaseUserId}`);
+                } else if (createCode === 'auth/email-already-exists' && email) {
+                    const existing = await auth.getUserByEmail(email);
+                    firebaseUserId = existing.uid;
+                    firebaseUser = existing;
+                    console.warn(`Recovered from email conflict by reusing ${firebaseUserId}`);
+                } else {
+                    throw createErr;
+                }
+            }
+        }
+
+        if (!firebaseUserId) {
+            throw new Error('Failed to resolve Firebase user for Apple login');
         }
 
         // Store or update user info in Firestore
