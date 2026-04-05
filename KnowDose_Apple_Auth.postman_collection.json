@@ -1,0 +1,192 @@
+{
+  "info": {
+    "_postman_id": "knowdose-apple-auth",
+    "name": "KnowDose Apple Login & JWT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:4000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Apple Login - New User",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identityToken\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6IkFCQzEyM1hZWjc4OSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiYXVkIjoiY29tLmtub3dkb3NlLmFwcCIsInN1YiI6IjAwMTIzNC5hYmNkZWYxMjM0NTY3LjEyMzQiLCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxNzA0MDY3ODAwfQ.mock_signature_for_testing\",\n  \"user\": {\n    \"name\": {\n      \"firstName\": \"Alice\",\n      \"givenName\": \"Alice\"\n    },\n    \"email\": \"alice@example.com\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/login/apple",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "login", "apple"]
+        }
+      }
+    },
+    {
+      "name": "[TEST] Apple Login - Mock (No Firebase Required)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identityToken\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6IkFCQzEyM1hZWjc4OSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiYXVkIjoiY29tLmtub3dkb3NlLmFwcCIsInN1YiI6IjAwMTIzNC5hYmNkZWYxMjM0NTY3LjEyMzQiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaWF0IjoxNzA0MDY3MjAwLCJleHAiOjE3MDQwNjc4MDB9.mock_signature_for_testing\",\n  \"user\": {\n    \"name\": {\n      \"firstName\": \"TestUser\",\n      \"givenName\": \"Test\"\n    },\n    \"email\": \"test@example.com\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/login/apple/test",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "login", "apple", "test"]
+        },
+        "description": "⭐ USE THIS FOR TESTING without Firebase credentials! Works with mock tokens. Development only."
+      }
+    },
+    {
+      "name": "Apple Login - Returning User",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identityToken\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6IkFCQzEyM1hZWjc4OSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiYXVkIjoiY29tLmtub3dkb3NlLmFwcCIsInN1YiI6IjAwMTIzNC5yZXR1cm5pbmd1c2VyNDU2LjEyMzQiLCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxNzA0MDY3ODAwfQ.mock_signature_for_testing\",\n  \"user\": {\n    \"name\": {\n      \"firstName\": \"Alice\",\n      \"givenName\": \"Alice\"\n    },\n    \"email\": \"alice@example.com\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/login/apple",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "login", "apple"]
+        },
+        "description": "Same email as 'New User' test - should link to existing user"
+      }
+    },
+    {
+      "name": "Apple Login - Minimal Data",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identityToken\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6IkFCQzEyM1hZWjc4OSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiYXVkIjoiY29tLmtub3dkb3NlLmFwcCIsInN1YiI6IjAwMTIzNC5taW5pbWFsdXNlcjc4OS4xMjM0IiwiZW1haWwiOiJtaW5pbWFsQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxNzA0MDY3ODAwfQ.mock_signature_for_testing\",\n  \"user\": {}\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/login/apple",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "login", "apple"]
+        },
+        "description": "Test with minimal user data"
+      }
+    },
+    {
+      "name": "Verify JWT Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{jwt_token}}\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/verify-token",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "verify-token"]
+        }
+      }
+    },
+    {
+      "name": "Verify Invalid Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"invalid.token.here\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:4000/api/users/verify-token",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "users", "verify-token"]
+        },
+        "description": "Should return 401 error"
+      }
+    },
+    {
+      "name": "User Profile with JWT Header",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:4000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["health"]
+        },
+        "description": "Example of using JWT token in Authorization header (req.userId will be available in middleware)"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
