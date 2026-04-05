@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { performTextAi, performAiAnalysis } from '../services/gemini.js';
 import { MealTimes, Medication } from '../types.js';
+import { requireJWTMiddleware } from '../services/jwt.js';
 
 const router = Router();
+router.use(requireJWTMiddleware);
 
 const textSchema = z.object({
   prompt: z.string().min(1),

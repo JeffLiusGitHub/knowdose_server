@@ -43,3 +43,24 @@ export function verifyJWTMiddleware(req: any, res: any, next: any) {
         return res.status(401).json({ error: 'Invalid or expired JWT token' });
     }
 }
+
+/**
+ * Strict middleware: requires a valid JWT in Authorization header.
+ * Sets req.userId from token payload.
+ */
+export function requireJWTMiddleware(req: any, res: any, next: any) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Missing Authorization Bearer token' });
+    }
+
+    const token = authHeader.slice(7);
+    try {
+        const decoded = verifyToken(token);
+        req.userId = decoded.userId;
+        next();
+    } catch (err: any) {
+        console.error('JWT verification failed:', err.message);
+        return res.status(401).json({ error: 'Invalid or expired JWT token' });
+    }
+}

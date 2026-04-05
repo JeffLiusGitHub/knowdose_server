@@ -1,12 +1,22 @@
 import { Router } from 'express';
-import jwt from 'jsonwebtoken';
 import { verifyIdToken } from 'apple-signin-auth';
 import { db, auth } from '../services/db.js';
-import { generateToken, verifyToken, verifyJWTMiddleware } from '../services/jwt.js';
+import { generateToken, verifyToken } from '../services/jwt.js';
 
 const router = Router();
 const APP_ID = process.env.APP_ID || 'default-med-app-id';
 const IS_DEV = process.env.NODE_ENV !== 'production';
+const APPLE_AUDIENCES = Array.from(
+    new Set(
+        [
+            ...(process.env.APPLE_APP_IDS || '').split(','),
+            process.env.APPLE_SERVICE_ID || '',
+            process.env.APPLE_APP_ID || 'com.knowdose.app',
+        ]
+            .map(value => value.trim())
+            .filter(Boolean)
+    )
+);
 
 /**
  * Helper: Decode mock Apple token for testing (development only)
@@ -30,10 +40,16 @@ function decodeMockAppleToken(token: string): any {
  */
 async function verifyAppleToken(identityToken: string): Promise<any> {
     try {
-        // Try real Apple verification first
-        return await verifyIdToken(identityToken, {
-            audience: process.env.APPLE_APP_ID || 'com.knowdose.app',
-        });
+        // Try real Apple verification first (supports multiple audiences).
+        let lastError: any = null;
+        for (const audience of APPLE_AUDIENCES) {
+            try {
+                return await verifyIdToken(identityToken, { audience });
+            } catch (err: any) {
+                lastError = err;
+            }
+        }
+        throw lastError || new Error('No valid Apple audience matched');
     } catch (realErr: any) {
         // If real verification fails and we're in development, try mock token
         if (IS_DEV) {
@@ -54,24 +70,60 @@ async function verifyAppleToken(identityToken: string): Promise<any> {
  */
 router.post('/login/apple', async (req, res) => {
     try {
-        const { identityToken, user } = req.body;
+        const { identityToken, firebaseIdToken, appleUserId: appleUserIdHint, user } = req.body || {};
 
-        if (!identityToken) {
-            return res.status(400).json({ error: 'Missing identityToken' });
+        if (!identityToken && !firebaseIdToken) {
+            return res.status(400).json({ error: 'Missing identityToken or firebaseIdToken' });
         }
 
-        // Verify the Apple identity token
-        let decodedToken;
-        try {
-            decodedToken = await verifyAppleToken(identityToken);
-        } catch (tokenErr: any) {
-            console.error('Apple token verification failed:', tokenErr.message);
-            return res.status(401).json({ error: 'Invalid or expired Apple identity token' });
+        let appleUserId =
+            typeof appleUserIdHint === 'string' && appleUserIdHint.trim()
+                ? appleUserIdHint.trim()
+                : '';
+        let email = user?.email || '';
+        let name = user?.name?.firstName || user?.name?.givenName || user?.displayName || '';
+
+        // Verify Apple identity token first (best source for Apple sub).
+        let appleTokenError: any = null;
+        if (identityToken) {
+            try {
+                const decodedToken = await verifyAppleToken(identityToken);
+                appleUserId = decodedToken?.sub || appleUserId;
+                email = decodedToken?.email || email;
+            } catch (tokenErr: any) {
+                appleTokenError = tokenErr;
+                console.warn('Apple token verification failed, falling back to Firebase token:', tokenErr?.message);
+            }
         }
 
-        const appleUserId = decodedToken.sub; // Apple's unique user identifier
-        const email = decodedToken.email || user?.email;
-        const name = user?.name?.firstName || user?.name?.givenName || '';
+        // Fallback: verify Firebase ID token and ensure Apple provider.
+        if ((!appleUserId || !email) && firebaseIdToken) {
+            try {
+                const firebaseDecoded: any = await auth.verifyIdToken(firebaseIdToken);
+                const signInProvider = firebaseDecoded?.firebase?.sign_in_provider || '';
+                const identities = firebaseDecoded?.firebase?.identities || {};
+                const appleIdentities = Array.isArray(identities['apple.com']) ? identities['apple.com'] : [];
+                const hasAppleIdentity = appleIdentities.length > 0 || signInProvider === 'apple.com';
+                const firebaseUidRaw = String(firebaseDecoded?.uid || '');
+                const firebaseUidAsAppleSub = firebaseUidRaw.startsWith('apple_')
+                    ? firebaseUidRaw.slice('apple_'.length)
+                    : firebaseUidRaw;
+
+                if (!hasAppleIdentity) {
+                    return res.status(401).json({ error: 'Firebase token is not from Apple sign-in' });
+                }
+
+                appleUserId = appleUserId || appleIdentities[0] || firebaseUidAsAppleSub || '';
+                email = email || firebaseDecoded.email || '';
+                name = name || firebaseDecoded.name || '';
+            } catch (firebaseErr: any) {
+                console.error('Firebase token verification failed during Apple login fallback:', firebaseErr?.message);
+                if (appleTokenError) {
+                    return res.status(401).json({ error: 'Invalid or expired Apple identity token' });
+                }
+                return res.status(401).json({ error: 'Invalid or expired Firebase ID token' });
+            }
+        }
 
         if (!appleUserId) {
             return res.status(400).json({ error: 'Could not extract user ID from Apple token' });
