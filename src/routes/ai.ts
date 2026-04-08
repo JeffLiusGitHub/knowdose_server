@@ -1,11 +1,30 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { performTextAi, performAiAnalysis } from '../services/gemini.js';
 import { MealTimes, Medication } from '../types.js';
-import { requireJWTMiddleware } from '../services/jwt.js';
+import { verifyJWTMiddleware } from '../services/jwt.js';
 
 const router = Router();
-router.use(requireJWTMiddleware);
+router.use(verifyJWTMiddleware);
+
+// Anti-abuse limiter: max 3 AI requests per minute per user (fallback to IP).
+const aiBurstLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => {
+    if (req.userId) return `user:${req.userId}`;
+    const rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    return `ip:${rawIp}`;
+  },
+  message: {
+    error: 'Too many AI requests. Please wait one minute and try again.',
+  },
+});
+
+router.use(aiBurstLimiter);
 
 const textSchema = z.object({
   prompt: z.string().min(1),
