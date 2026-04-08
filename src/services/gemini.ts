@@ -284,9 +284,38 @@ export const performAiAnalysis = async (
   base64Image: string,
   lang: 'zh' | 'en',
   mealTimes: MealTimes,
-  existingMeds: Medication[]
+  existingMeds: Medication[],
+  imageMimeType: string = 'image/jpeg'
 ) => {
   const ai = ensureClient();
+  const detectMimeFromBase64 = (b64: string): string | null => {
+    const head = (b64 || '').slice(0, 64);
+    if (head.startsWith('/9j/')) return 'image/jpeg';
+    if (head.startsWith('iVBORw0KGgo')) return 'image/png';
+    if (head.startsWith('UklGR')) return 'image/webp';
+    if (head.startsWith('R0lGOD')) return 'image/gif';
+    if (
+      head.startsWith('AAAA') &&
+      (b64.includes('ZnR5cGhlaWM') || b64.includes('ZnR5cGhlaWY') || b64.includes('ZnR5cG1pZjE'))
+    ) {
+      return 'image/heic';
+    }
+    return null;
+  };
+  const normalizedMime = (imageMimeType || 'image/jpeg').toLowerCase().trim();
+  const detectedMime = detectMimeFromBase64(base64Image);
+  const allowedMimeTypes = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/heic',
+    'image/heif',
+  ]);
+  const resolvedMimeType =
+    (allowedMimeTypes.has(normalizedMime) ? normalizedMime : null) ||
+    (detectedMime && allowedMimeTypes.has(detectedMime) ? detectedMime : null) ||
+    'image/jpeg';
   const prompt =
     lang === 'zh'
       ? `分析药物标签。用户三餐时间：早餐${mealTimes.breakfast}, 午餐${mealTimes.lunch}, 晚餐${mealTimes.dinner}。现有药物时间：${existingMeds
@@ -303,7 +332,7 @@ export const performAiAnalysis = async (
         { text: prompt },
         {
           inlineData: {
-            mimeType: 'image/jpeg',
+            mimeType: resolvedMimeType,
             data: base64Image,
           },
         },

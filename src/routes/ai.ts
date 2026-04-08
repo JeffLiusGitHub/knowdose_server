@@ -8,6 +8,50 @@ import { verifyJWTMiddleware } from '../services/jwt.js';
 const router = Router();
 router.use(verifyJWTMiddleware);
 
+const mapAiError = (err: any, fallbackMessage: string) => {
+  const rawMessage = String(err?.message || fallbackMessage);
+  const normalized = rawMessage.toLowerCase();
+  const status = Number(err?.status) || Number(err?.response?.status) || 400;
+
+  if (
+    normalized.includes('user location is not supported for the api use') ||
+    normalized.includes('failed_precondition')
+  ) {
+    return {
+      status: 503,
+      code: 'AI_REGION_UNSUPPORTED',
+      error:
+        'AI service is temporarily unavailable from this server region. Please try again later or use manual entry.',
+      detail: rawMessage,
+    };
+  }
+
+  if (status === 429 || normalized.includes('too many ai requests')) {
+    return {
+      status: 429,
+      code: 'AI_RATE_LIMITED',
+      error: 'Too many AI requests. Please wait one minute and try again.',
+      detail: rawMessage,
+    };
+  }
+
+  if (normalized.includes('unable to process input image')) {
+    return {
+      status: 400,
+      code: 'AI_IMAGE_INVALID',
+      error: 'Unable to process this image. Please retake a clearer medication label photo.',
+      detail: rawMessage,
+    };
+  }
+
+  return {
+    status,
+    code: 'AI_REQUEST_FAILED',
+    error: rawMessage || fallbackMessage,
+    detail: rawMessage,
+  };
+};
+
 // Anti-abuse limiter: max 3 AI requests per minute per user (fallback to IP).
 const aiBurstLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -42,12 +86,14 @@ router.post('/text', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     console.error(err);
-    res.status(400).json({ error: err.message || 'AI text error' });
+    const mapped = mapAiError(err, 'AI text error');
+    res.status(mapped.status).json({ error: mapped.error, code: mapped.code });
   }
 });
 
 const analyzeSchema = z.object({
   imageBase64: z.string().min(10),
+  imageMimeType: z.string().min(3).default('image/jpeg'),
   lang: z.enum(['zh', 'en']).default('zh'),
   mealTimes: z.object({
     breakfast: z.string().default('08:00'),
@@ -64,12 +110,14 @@ router.post('/analyze-image', async (req, res) => {
       payload.imageBase64,
       payload.lang,
       payload.mealTimes,
-      payload.existingMeds
+      payload.existingMeds,
+      payload.imageMimeType
     );
     res.json({ result: json });
   } catch (err: any) {
     console.error(err);
-    res.status(400).json({ error: err.message || 'AI analysis error' });
+    const mapped = mapAiError(err, 'AI analysis error');
+    res.status(mapped.status).json({ error: mapped.error, code: mapped.code });
   }
 });
 
