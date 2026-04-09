@@ -6,6 +6,9 @@ import { generateToken, verifyToken } from '../services/jwt.js';
 const router = Router();
 const APP_ID = process.env.APP_ID || 'default-med-app-id';
 const IS_DEV = process.env.NODE_ENV !== 'production';
+const APPLE_VERIFY_TIMEOUT_MS = Number(process.env.APPLE_VERIFY_TIMEOUT_MS || 5000);
+const FIREBASE_VERIFY_TIMEOUT_MS = Number(process.env.FIREBASE_VERIFY_TIMEOUT_MS || 4000);
+const FIRESTORE_WRITE_TIMEOUT_MS = Number(process.env.FIRESTORE_WRITE_TIMEOUT_MS || 2000);
 const APPLE_AUDIENCES = Array.from(
     new Set(
         [
@@ -17,6 +20,29 @@ const APPLE_AUDIENCES = Array.from(
             .filter(Boolean)
     )
 );
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(label)), timeoutMs);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
+}
+
+function isTimeoutError(error: unknown): boolean {
+    const message =
+        error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : String(error || '');
+    return message.toLowerCase().includes('timed out');
+}
 
 /**
  * Helper: Decode mock Apple token for testing (development only)
@@ -82,24 +108,16 @@ router.post('/login/apple', async (req, res) => {
                 : '';
         let email = user?.email || '';
         let name = user?.name?.firstName || user?.name?.givenName || user?.displayName || '';
+        let firebaseVerified = false;
 
-        // Verify Apple identity token first (best source for Apple sub).
-        let appleTokenError: any = null;
-        if (identityToken) {
+        // Fast path: verify Firebase token first and confirm it came from Apple sign-in.
+        if (firebaseIdToken) {
             try {
-                const decodedToken = await verifyAppleToken(identityToken);
-                appleUserId = decodedToken?.sub || appleUserId;
-                email = decodedToken?.email || email;
-            } catch (tokenErr: any) {
-                appleTokenError = tokenErr;
-                console.warn('Apple token verification failed, falling back to Firebase token:', tokenErr?.message);
-            }
-        }
-
-        // Fallback: verify Firebase ID token and ensure Apple provider.
-        if ((!appleUserId || !email) && firebaseIdToken) {
-            try {
-                const firebaseDecoded: any = await auth.verifyIdToken(firebaseIdToken);
+                const firebaseDecoded: any = await withTimeout(
+                    auth.verifyIdToken(firebaseIdToken),
+                    FIREBASE_VERIFY_TIMEOUT_MS,
+                    'Firebase ID token verification timed out'
+                );
                 const signInProvider = firebaseDecoded?.firebase?.sign_in_provider || '';
                 const identities = firebaseDecoded?.firebase?.identities || {};
                 const appleIdentities = Array.isArray(identities['apple.com']) ? identities['apple.com'] : [];
@@ -113,15 +131,42 @@ router.post('/login/apple', async (req, res) => {
                     return res.status(401).json({ error: 'Firebase token is not from Apple sign-in' });
                 }
 
+                firebaseVerified = true;
                 appleUserId = appleUserId || appleIdentities[0] || firebaseUidAsAppleSub || '';
                 email = email || firebaseDecoded.email || '';
                 name = name || firebaseDecoded.name || '';
             } catch (firebaseErr: any) {
-                console.error('Firebase token verification failed during Apple login fallback:', firebaseErr?.message);
-                if (appleTokenError) {
+                console.warn(
+                    'Firebase token verification failed during Apple login fast path:',
+                    firebaseErr?.message || firebaseErr
+                );
+                if (!identityToken) {
+                    if (isTimeoutError(firebaseErr)) {
+                        return res.status(503).json({ error: 'Firebase token verification timed out' });
+                    }
+                    return res.status(401).json({ error: 'Invalid or expired Firebase ID token' });
+                }
+            }
+        }
+
+        // Fallback path: verify Apple identity token only if needed to resolve Apple sub.
+        if (!appleUserId && identityToken) {
+            try {
+                const decodedToken = await withTimeout(
+                    verifyAppleToken(identityToken),
+                    APPLE_VERIFY_TIMEOUT_MS,
+                    'Apple identity token verification timed out'
+                );
+                appleUserId = decodedToken?.sub || appleUserId;
+                email = decodedToken?.email || email;
+            } catch (appleErr: any) {
+                console.warn('Apple token verification failed during fallback:', appleErr?.message || appleErr);
+                if (!firebaseVerified) {
+                    if (isTimeoutError(appleErr)) {
+                        return res.status(503).json({ error: 'Apple identity token verification timed out' });
+                    }
                     return res.status(401).json({ error: 'Invalid or expired Apple identity token' });
                 }
-                return res.status(401).json({ error: 'Invalid or expired Firebase ID token' });
             }
         }
 
@@ -190,22 +235,8 @@ router.post('/login/apple', async (req, res) => {
             throw new Error('Failed to resolve Firebase user for Apple login');
         }
 
-        // Store or update user info in Firestore
-        const userDocRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(firebaseUserId);
-        await userDocRef.set(
-            {
-                email: email || null,
-                displayName: name || null,
-                appleUserId,
-                loginMethod: 'apple',
-                lastLogin: new Date(),
-            },
-            { merge: true }
-        );
-
-        // Generate JWT token
+        // Generate JWT token and respond immediately so UI is not blocked by profile sync.
         const token = generateToken(firebaseUserId);
-
         res.json({
             ok: true,
             token,
@@ -215,6 +246,25 @@ router.post('/login/apple', async (req, res) => {
                 displayName: name,
                 appleUserId,
             },
+        });
+
+        // Store or update user info in Firestore asynchronously.
+        const userDocRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(firebaseUserId);
+        void withTimeout(
+            userDocRef.set(
+                {
+                    email: email || null,
+                    displayName: name || null,
+                    appleUserId,
+                    loginMethod: 'apple',
+                    lastLogin: new Date(),
+                },
+                { merge: true }
+            ),
+            FIRESTORE_WRITE_TIMEOUT_MS,
+            'Firestore user profile write timed out'
+        ).catch((writeErr: any) => {
+            console.error('Async Firestore profile sync failed after login:', writeErr?.message || writeErr);
         });
     } catch (err: any) {
         console.error('Error in Apple authentication:', err);
